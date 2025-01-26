@@ -132,6 +132,7 @@ float sens = 0.005;
 typedef Vector2f vec2;
 int mapSize = 20;
 double dir = 0;
+float playerAngle;
 int oldAngle;
 bool isDDA = false;
 bool showMinimap = true;
@@ -168,6 +169,7 @@ void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize);
 void drawMap(vector<float> distances, vector<int> sides,RenderWindow& window);
 void postProcessing(vector<int> arr, int treshold);
 float clamp(float val, float minval, float maxval);
+float dirAngle;
 void start()
 {
     enemyTexture.loadFromFile("res/enemy.png");
@@ -305,21 +307,6 @@ int main()
         */
         window.draw(fpsText);
         //-------------------------draw Enemy and objects-------------------------------------
-        RectangleShape enemy;
-        enemy.setTexture(&enemyTexture, false);
-        float R = 512 / fov;
-        vec2 vect = vec2(e1.pos.x + offset.x - position.x,
-                         e1.pos.y + offset.y - position.y);
-        float angle = atan2(vect.y, vect.x);
-        angle *= deg;
-        enemy.setPosition(256 / 180 * abs(fmod(dir * sens * deg, 360)) + angle, 256);
-        float dist = sqrt(vect.x * vect.x + vect.y * vect.y);
-        enemy.setSize(vec2(clamp(100 - dist, 0, 100), clamp(100 - dist, 0, 100)));
-        window.draw(enemy);
-
-        cout << angle + 180 <<endl<<abs(fmod(dir * sens * deg, 360)) << endl;
-
-
 
         static VertexArray line(LinesStrip, 2);
         vector<Ray> rays;
@@ -336,6 +323,7 @@ int main()
             float correctedDist = 0;
             vec2 dirVec = vec2(sin(angle)*20,
                                cos(angle)*20);
+            playerAngle = atan2(dirVec.y, dirVec.x);
             if(isDDA)
             {
                 rayCastingDDA ray;
@@ -395,6 +383,26 @@ int main()
                 window.draw(l);
             e1.display(window, offset);
         }
+        RectangleShape enemy;
+        enemy.setTexture(&enemyTexture, false);
+        vec2 eVec = vec2(e1.pos.x + offset.x - position.x,
+                         e1.pos.y + offset.y - position.y);
+        float eAngle = atan2(eVec.y, eVec.x) * deg + 180;
+        float dist = sqrt(eVec.x * eVec.x + eVec.y * eVec.y);
+        float startAngle = atan2(cos(dir * sens), sin(dir * sens)) * deg + 180;
+        float endAngle = atan2(cos(dir * sens+ fov * rad), sin(dir * sens + fov * rad)) * deg + 180;
+        float percent = (eAngle - startAngle) / (endAngle - startAngle);
+        cout << percent << endl;
+        float maxSize = 400;
+        dist *= 2;
+        enemy.setSize(vec2(maxSize - dist * 2, maxSize - dist * 2));
+        enemy.setOrigin(vec2(enemy.getSize().x / 2, enemy.getSize().y / 2));
+        enemy.setPosition(vec2(window.getSize().x - percent * window.getSize().x , 512));
+        float col =  clamp(255 - dist, 0, 255);
+        enemy.setFillColor(Color(col, col, col));
+        if(percent < 1 && percent > 0)
+            window.draw(enemy);
+
         window.display();
     }
     return 0;
@@ -406,9 +414,9 @@ int fps()
     static int fps= 0;
     static int lastFps;
 
-    if(t1 - clock() <=-1000)
+    if(t1 - clock() <=-10)
     {
-        lastFps = fps;
+        lastFps = fps * 100;
         fps = 0;
         t1 = clock();
     }
@@ -447,7 +455,7 @@ void drawMap(vector<float> distances, vector<int> sides, RenderWindow& window)
         default:
             break;
         }
-        if(d*shadowPower >180 )
+        if(d*shadowPower >180)
             wall.setFillColor(Color::Black);
         window.draw(wall);
         wall.move(-wall.getSize().x, 0);
