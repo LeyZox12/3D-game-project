@@ -19,9 +19,9 @@ class Enemy
         int time;
         int speed = 100;
         int mapSize;
+        int actionIndex = 0;
         bool isTargetSet = false;
         vec2 offset;
-        int actionsIndex;
         vec2 currentCase = vec2(0, 0);
         pathfinder path;
         vec2 acc;
@@ -75,12 +75,12 @@ class Enemy
         }
         void setTarget(vector<vector<int>> mat, vec2 target)
         {
-            target = vec2(floor((target.x - offset.x) / mat.size()), floor((target.y - offset.y) / mat.size()));
             if(!mat[target.y][target.x] == 1)
             {
                 mat[target.y][target.x] = 3;
+
                 currentCase = vec2(floor((pos.x) / mat.size()), floor((pos.y) / mat.size()));
-                actionsIndex = 0;
+                actionIndex = 0;
                 actions =  path.getClosest(mat, currentCase, target);
                 isTargetSet = true;
             }
@@ -92,15 +92,14 @@ class Enemy
                 RectangleShape enemyRect(vec2(10, 10));
                 enemyRect.setPosition(pos);
                 RectangleShape currentCell(vec2(mapSize, mapSize));
-                if(actionsIndex == actions.size() - 1)
+                if(actionIndex == actions.size() - 1)
                     isTargetSet = false;
                 else if(clock() - time >= 500)
                 {
                     time = clock();
-                    currentCase += actions[actionsIndex];
-                    actionsIndex++;
-                    cout << currentCase.x << endl;
-                    cout << currentCase.y << endl;
+                    currentCase += actions[actionIndex];
+                    actionIndex++;
+
                 }
                 pos += vec2((currentCase.x * mapSize + mapSize / 2 - pos.x ) / 20, (currentCase.y * mapSize + mapSize / 2 - pos.y) / 20 );
             }
@@ -132,8 +131,9 @@ float sens = 0.005;
 typedef Vector2f vec2;
 int mapSize = 20;
 double dir = 0;
+float playerAngle;
 int oldAngle;
-bool isDDA = false;
+bool isDDA = true;
 bool showMinimap = true;
 RectangleShape playerRect(vec2(10, 10));
 vec2 position;
@@ -141,6 +141,7 @@ vec2 vel = vec2(0, 0);
 string toString(int n);
 Keyboard::Key heldKey;
 Texture enemyTexture;
+Texture slotTexture;
 vector<vector<int>> mapArray = {
 {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
 {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
@@ -151,9 +152,9 @@ vector<vector<int>> mapArray = {
 {1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1},
 {1,0,0,1,1,0,0,0,0,0,0,0,0,1,1,1},
 {1,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1},
-{1,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1},
-{1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1},
-{1,0,0,0,1,0,0,1,1,1,0,1,1,1,0,1},
+{1,0,0,0,0,0,0,0,1,0,1,1,0,1,1,1},
+{1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1},
+{1,0,0,0,1,0,0,0,0,1,0,1,1,1,0,1},
 {1,0,0,0,1,0,0,0,1,0,0,1,1,0,0,1},
 {1,0,1,1,1,0,0,0,1,0,0,1,0,0,1,1},
 {1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1},
@@ -164,14 +165,49 @@ vec2 offset = vec2(900 - mapArray.size() * mapSize, 0);
 Enemy e1(vec2(40, 60));
 int speed=4000;
 float precision = 1;
+float dirAngle;
 void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize);
-void drawMap(vector<float> distances, vector<int> sides,RenderWindow& window);
+void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, RenderWindow& window);
 void postProcessing(vector<int> arr, int treshold);
 float clamp(float val, float minval, float maxval);
+void drawObject(RenderWindow& window, Texture& texture, vec2 objPos, vec2 playerPos, float playerDir, int fov, float yPos, int maxSize)
+{
+    double pi = 3.1415926;
+    double deg = 180 / pi;
+    double rad = pi / 180;
+    RectangleShape enemy;
+    enemy.setTexture(&texture, false);
+    vec2 eVec = vec2(objPos.x - playerPos.x,
+                     objPos.y - playerPos.y);
+    float eAngle = atan2(eVec.y, eVec.x) * deg;
+    float dist = sqrt(eVec.x * eVec.x + eVec.y * eVec.y);
+    float endAngle = atan2(cos(playerDir), sin(playerDir)) * deg;
+    float startAngle = atan2(cos(playerDir + fov * rad), sin(playerDir + fov * rad)) * deg;
+    float diff = endAngle - startAngle;
+    if(diff < 0)
+    {
+        endAngle += 360;
+        if(eAngle < 0)
+            eAngle += 360;
+    }
+    float percent = (eAngle - startAngle) / (endAngle - startAngle);
+    dist *= 2;
+    float rSize = clamp(maxSize - dist * 2, 0, maxSize);
+    enemy.setSize(vec2(rSize, rSize));
+    enemy.setPosition(vec2(percent * window.getSize().x, yPos));
+    //centers the sprite
+    enemy.move(vec2(rSize / -2, rSize / -2));
+    float col =  clamp(255 - dist, 0, 255);
+    enemy.setFillColor(Color(col, col, col));
+    if(eAngle > startAngle && eAngle < endAngle)
+        window.draw(enemy);
+}
+
 void start()
 {
+    slotTexture.loadFromFile("res/slot_machine.png");
     enemyTexture.loadFromFile("res/enemy.png");
-    raycount = 1;
+    raycount = fov;
     int randY;
     int randX;
     do
@@ -182,7 +218,7 @@ void start()
     }while(mapArray[randY][randX] != 0);
     e1.mapSize = 20;
     e1.offset = offset;
-    e1.setTarget(mapArray, position);
+    //e1.setTarget(mapArray, position);
 
 
     window.setMouseCursorGrabbed(true);
@@ -304,29 +340,13 @@ int main()
         }
         */
         window.draw(fpsText);
-        //-------------------------draw Enemy and objects-------------------------------------
-        RectangleShape enemy;
-        enemy.setTexture(&enemyTexture, false);
-        float R = 512 / fov;
-        vec2 vect = vec2(e1.pos.x + offset.x - position.x,
-                         e1.pos.y + offset.y - position.y);
-        float angle = atan2(vect.y, vect.x);
-        angle *= deg;
-        enemy.setPosition(256 / 180 * abs(fmod(dir * sens * deg, 360)) + angle, 256);
-        float dist = sqrt(vect.x * vect.x + vect.y * vect.y);
-        enemy.setSize(vec2(clamp(100 - dist, 0, 100), clamp(100 - dist, 0, 100)));
-        window.draw(enemy);
-
-        cout << angle + 180 <<endl<<abs(fmod(dir * sens * deg, 360)) << endl;
-
-
-
         static VertexArray line(LinesStrip, 2);
         vector<Ray> rays;
         vector<float> distances;
         vector<VertexArray> lines;
         vector<float> directions;
         vector<int> sides;
+        vector<float> percents;
         for(float i =0; i<raycount; i+=(float)fov/raycount)
         {
             line[0].position = position;
@@ -336,22 +356,24 @@ int main()
             float correctedDist = 0;
             vec2 dirVec = vec2(sin(angle)*20,
                                cos(angle)*20);
+            playerAngle = atan2(dirVec.y, dirVec.x);
             if(isDDA)
             {
                 rayCastingDDA ray;
+                ray.setMapSize(20);
                 vec2 fixedPos = vec2((position.x - offset.x),
                                      (position.y - offset.y));
-                pair<float, int> result = ray.cast(fixedPos, vec2(dirVec.x, dirVec.y), mapSize, 20, mapArray);
-                correctedDist = result.first;
-
-                sides.push_back(result.second);
+                ray.cast(fixedPos, vec2(dirVec.x, dirVec.y), mapSize, 20, mapArray);
+                correctedDist = ray.getDist();
+                percents.push_back(ray.getPercent());
+                sides.push_back(ray.getSide());
                 lines.push_back(line);
                 line[1].position = vec2(position + dirVec * correctedDist);
                 distances.push_back(correctedDist * 50);
             }
             else
             {
-                Ray ray(line[0].position, dirVec, 100);
+                Ray ray(line[0].position, dirVec, 1000);
                 ray.Cast(mapArray, mapSize, offset ,precision);
                 line[1].position = vec2(ray.currentPoint.x,ray.currentPoint.y);
                 correctedDist = ray.getDist() - (cos(dir*sens+(((float)fov/raycount * i)*rad)));
@@ -360,7 +382,17 @@ int main()
                 distances.push_back(correctedDist);
             }
         }
-        e1.update(dt);
+        vec2 fixedPos = vec2(floor((position.x -  offset.x) / mapArray.size()),
+                             floor((position.y -  offset.y) / mapArray.size()));
+        static vec2 oldPos = fixedPos;
+
+        if(fixedPos != oldPos)
+        {
+            oldPos = fixedPos;
+            //e1.setTarget(mapArray, fixedPos);
+            cout << e1.actions.size() << endl << endl;
+        }
+        //e1.update(dt);
         playerRect.setPosition(position);
         playerRect.setOrigin(5, 5);
         for(int i = 0; i < mapArray.size(); i++)
@@ -387,7 +419,7 @@ int main()
         }
         position += vec2(vel.x * dt, vel.y * dt);
         vel = vec2(vel.x * 0.9, vel.y * 0.9);
-        drawMap(distances, sides, window);
+        drawMap(distances, sides, percents, window);
         if(showMinimap)
         {
             drawMiniMap(mapArray, offset, 20);
@@ -395,6 +427,8 @@ int main()
                 window.draw(l);
             e1.display(window, offset);
         }
+        drawObject(window, enemyTexture, e1.pos + offset, position, dir * sens, fov, window.getSize().y / 2, 400);
+        //drawObject(window, slotTexture, vec2(3 * mapSize, mapSize) + offset, position, dir * sens, fov, window.getSize().y - 200, 800);
         window.display();
     }
     return 0;
@@ -419,20 +453,28 @@ int fps()
     return lastFps;
 }
 
-void drawMap(vector<float> distances, vector<int> sides, RenderWindow& window)
+void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, RenderWindow& window)
 {
+    double ratioAngle = distances.size() / fov;
+    Texture wallTexture;
+    wallTexture.loadFromFile("res/texture.png");
+    Vector2u textureSize = wallTexture.getSize();
+    wallTexture.setRepeated(true);
     RectangleShape wall;
     wall.setPosition(window.getSize().x, 0);
+    wall.setTexture(&wallTexture);
     int i =0;
     for(auto& d : distances)
     {
-        wall.setSize(vec2(window.getSize().x / distances.size(), window.getSize().y - d * 4 ));
-        wall.setPosition(wall.getPosition().x, d * 2);
-        float shadowPower= 1;
-        wall.setFillColor(Color(255,255,255,255-d*shadowPower));
+        wall.setSize(vec2(window.getSize().x / distances.size(), clamp(window.getSize().y / (d / 50), 0, window.getSize().y)));
+        wall.setPosition(wall.getPosition().x, (window.getSize().y - wall.getSize().y) / 2);
+        float shadowPower= 0.5;
+        float col = 255 / (d / 100);
+        col = clamp(col, 0, 255);
+        wall.setFillColor(Color(col, col, col,255));
         switch(sides[i])
         {
-        case(0):
+        /*case(0):
             wall.setFillColor(Color(255-d*shadowPower,0,0));
             break;
         case(1):
@@ -445,10 +487,15 @@ void drawMap(vector<float> distances, vector<int> sides, RenderWindow& window)
             wall.setFillColor(Color(255-d*shadowPower,0,255-d*shadowPower));
             break;
         default:
-            break;
+            break;*/
         }
-        if(d*shadowPower >180 )
-            wall.setFillColor(Color::Black);
+        if(isDDA)
+            wall.setTextureRect({fmod(percents[i] * textureSize.x, textureSize.x), 0, wall.getSize().x / textureSize.x, textureSize.y});
+        Color color = wall.getFillColor();
+        color.r = clamp(color.r, 0, 255);
+        color.g = clamp(color.g, 0, 255);
+        color.b = clamp(color.b, 0, 255);
+        wall.setFillColor(color);
         window.draw(wall);
         wall.move(-wall.getSize().x, 0);
         wall.setFillColor(Color(0,0,0));
