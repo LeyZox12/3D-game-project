@@ -113,7 +113,118 @@ class Enemy
             window.draw(enemyRect);
         }
 };
+class objManager
+{
+    public:
+        void addObject(vec2 pos, Texture texture, int yPos)
+        {
+            object newObj;
+            newObj.setTexture(texture);
+            newObj.setPosition(pos);
+            newObj.setYPos(yPos);
+            objects.push_back(newObj);
+        }
+        void drawObjects(RenderWindow& window, float dist, vec2 playerPos, float playerDir, int fov, int maxSize)
+        {
+            for(int i = 0; i < objects.size(); i++)
+            {
+                vec2 diff = vec2(objects[i].getPosition() - playerPos);
+                float playerToObjDist = sqrt(diff.x * diff.x + diff.y * diff.y);
+                if(dist > playerToObjDist && !objects[i].getHasBeenDrawn())
+                {
 
+                    objects[i].draw(window, playerPos, playerDir, fov, 400);
+                }
+            }
+            for(int i = 0; i < objects.size(); i++)
+                objects[i].setBeenDrawn(false);
+        }
+    private:
+        class object
+        {
+            public:
+                object()
+                {
+
+                }
+                void setYPos(float yPos)
+                {
+                    this -> yPos = yPos;
+                }
+                int getYPos()
+                {
+                    return yPos;
+                }
+                void setBeenDrawn(bool state)
+                {
+                    hasBeenDrawn = state;
+                }
+                void setTexture(Texture texture)
+                {
+                    texture = texture;
+                }
+                Texture getTexture()
+                {
+                    return texture;
+                }
+                bool getHasBeenDrawn()
+                {
+                    return hasBeenDrawn;
+                }
+                vec2 setPosition(vec2 pos)
+                {
+                    this -> pos = pos;
+                }
+                vec2 getPosition()
+                {
+                    return pos;
+                }
+                void draw(RenderWindow& window, vec2 playerPos, float playerDir, int fov, int maxSize)
+                {
+                    double pi = 3.1415926;
+                    double deg = 180 / pi;
+                    double rad = pi / 180;
+                    RectangleShape sprite;
+                    vec2 oVec = vec2(pos.x - playerPos.x,
+                                     pos.y - playerPos.y);
+                    float eAngle = atan2(oVec.y, oVec.x) * deg;
+                    float dist = sqrt(oVec.x * oVec.x + oVec.y * oVec.y);
+                    float endAngle = atan2(cos(playerDir), sin(playerDir)) * deg;
+                    float startAngle = atan2(cos(playerDir + fov * rad), sin(playerDir + fov * rad)) * deg;
+                    float diff = endAngle - startAngle;
+                    if(diff < 0)
+                    {
+                        endAngle += 360;
+                        if(eAngle < 0)
+                            eAngle += 360;
+                    }
+                    float percent = (eAngle - startAngle) / (endAngle - startAngle);
+                    dist *= 2;
+                    float rSize = dist * 2 < 0 ? 0 : (dist * 2 > maxSize ? maxSize : dist * 2);
+                    vec2 endSize = vec2(maxSize - rSize, maxSize - rSize);
+                    vec2 endPos = vec2(percent * window.getSize().x, yPos);
+                    //centers the sprite
+                    sprite.move(vec2(rSize / 2, rSize / 2));
+                    float col =  col > 255 ? 255 : (col < 0 ? 0 : col);
+                    sprite.setFillColor(Color(col, col, col));
+                    if(eAngle > startAngle && eAngle < endAngle)
+                    {
+
+                        sprite.setSize(endSize);
+                        sprite.setPosition(endPos);
+                        sprite.setTexture(&texture);
+                        window.draw(sprite);
+                        setBeenDrawn(true);
+                    }
+                }
+            private:
+                Texture texture;
+                bool hasBeenDrawn;
+                vec2 pos;
+                float yPos;
+        };
+        vector<object> objects;
+};
 
 RenderWindow window(VideoMode(900,900), "Raycaster");
 Event e;
@@ -163,6 +274,7 @@ vector<vector<int>> mapArray = {
 
 vec2 offset = vec2(900 - mapArray.size() * mapSize, 0);
 Enemy e1(vec2(40, 60));
+objManager obj;
 int speed=4000;
 float precision = 1;
 float dirAngle;
@@ -170,41 +282,9 @@ void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize);
 void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, RenderWindow& window);
 void postProcessing(vector<int> arr, int treshold);
 float clamp(float val, float minval, float maxval);
-void drawObject(RenderWindow& window, Texture& texture, vec2 objPos, vec2 playerPos, float playerDir, int fov, float yPos, int maxSize)
-{
-    double pi = 3.1415926;
-    double deg = 180 / pi;
-    double rad = pi / 180;
-    RectangleShape enemy;
-    enemy.setTexture(&texture, false);
-    vec2 eVec = vec2(objPos.x - playerPos.x,
-                     objPos.y - playerPos.y);
-    float eAngle = atan2(eVec.y, eVec.x) * deg;
-    float dist = sqrt(eVec.x * eVec.x + eVec.y * eVec.y);
-    float endAngle = atan2(cos(playerDir), sin(playerDir)) * deg;
-    float startAngle = atan2(cos(playerDir + fov * rad), sin(playerDir + fov * rad)) * deg;
-    float diff = endAngle - startAngle;
-    if(diff < 0)
-    {
-        endAngle += 360;
-        if(eAngle < 0)
-            eAngle += 360;
-    }
-    float percent = (eAngle - startAngle) / (endAngle - startAngle);
-    dist *= 2;
-    float rSize = clamp(maxSize - dist * 2, 0, maxSize);
-    enemy.setSize(vec2(rSize, rSize));
-    enemy.setPosition(vec2(percent * window.getSize().x, yPos));
-    //centers the sprite
-    enemy.move(vec2(rSize / -2, rSize / -2));
-    float col =  clamp(255 - dist, 0, 255);
-    enemy.setFillColor(Color(col, col, col));
-    if(eAngle > startAngle && eAngle < endAngle)
-        window.draw(enemy);
-}
-
 void start()
 {
+
     slotTexture.loadFromFile("res/slot_machine.png");
     enemyTexture.loadFromFile("res/enemy.png");
     raycount = fov;
@@ -218,6 +298,8 @@ void start()
     }while(mapArray[randY][randX] != 0);
     e1.mapSize = 20;
     e1.offset = offset;
+    obj.addObject(e1.pos, enemyTexture, window.getSize().y / 2);
+
     //e1.setTarget(mapArray, position);
 
 
@@ -427,7 +509,7 @@ int main()
                 window.draw(l);
             e1.display(window, offset);
         }
-        drawObject(window, enemyTexture, e1.pos + offset, position, dir * sens, fov, window.getSize().y / 2, 400);
+
         //drawObject(window, slotTexture, vec2(3 * mapSize, mapSize) + offset, position, dir * sens, fov, window.getSize().y - 200, 800);
         window.display();
     }
@@ -463,16 +545,23 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
     RectangleShape wall;
     wall.setPosition(window.getSize().x, 0);
     wall.setTexture(&wallTexture);
-    int i =0;
-    for(auto& d : distances)
+    vector<pair<float, int>> distancesSorted;
+    for(int i = 0; i < distances.size(); i++)
+        distancesSorted.push_back(make_pair(distances[i], i));
+    sort(distancesSorted.begin(), distancesSorted.end());
+    reverse(distancesSorted.begin(), distancesSorted.end());
+    for(auto& d : distancesSorted)
     {
-        wall.setSize(vec2(window.getSize().x / distances.size(), clamp(window.getSize().y / (d / 50), 0, window.getSize().y)));
+        int index = d.second;
+        wall.setPosition(window.getSize().x - index * window.getSize().x / distances.size(), 0);
+        float dist = distances[index];
+        wall.setSize(vec2(window.getSize().x / distances.size(), clamp(window.getSize().y / (dist / 50), 0, window.getSize().y)));
         wall.setPosition(wall.getPosition().x, (window.getSize().y - wall.getSize().y) / 2);
         float shadowPower= 0.5;
-        float col = 255 / (d / 100);
+        float col = 255 / (dist / 100);
         col = clamp(col, 0, 255);
         wall.setFillColor(Color(col, col, col,255));
-        switch(sides[i])
+        switch(sides[index])
         {
         /*case(0):
             wall.setFillColor(Color(255-d*shadowPower,0,0));
@@ -490,16 +579,15 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
             break;*/
         }
         if(isDDA)
-            wall.setTextureRect({fmod(percents[i] * textureSize.x, textureSize.x), 0, wall.getSize().x / textureSize.x, textureSize.y});
+            wall.setTextureRect({fmod(percents[index] * textureSize.x, textureSize.x), 0, wall.getSize().x / textureSize.x, textureSize.y});
         Color color = wall.getFillColor();
         color.r = clamp(color.r, 0, 255);
         color.g = clamp(color.g, 0, 255);
         color.b = clamp(color.b, 0, 255);
         wall.setFillColor(color);
+        obj.drawObjects(window, dist, position - offset, dir * sens, fov, 400);
         window.draw(wall);
-        wall.move(-wall.getSize().x, 0);
         wall.setFillColor(Color(0,0,0));
-        i++;
     }
     window.draw(playerRect);
 }
