@@ -129,10 +129,9 @@ class objManager
             for(int i = 0; i < objects.size(); i++)
             {
                 vec2 diff = vec2(objects[i].getPosition() - playerPos);
-                float playerToObjDist = sqrt(diff.x * diff.x + diff.y * diff.y);
+                float playerToObjDist = sqrt(diff.x * diff.x + diff.y * diff.y) * 2;
                 if(dist > playerToObjDist && !objects[i].getHasBeenDrawn())
                 {
-
                     objects[i].draw(window, playerPos, playerDir, fov, 400);
                 }
             }
@@ -205,11 +204,11 @@ class objManager
                     vec2 endPos = vec2(percent * window.getSize().x, yPos);
                     //centers the sprite
                     sprite.move(vec2(rSize / 2, rSize / 2));
-                    float col =  col > 255 ? 255 : (col < 0 ? 0 : col);
+                    float col = 255 / (dist / 100);
+                    col =  col > 255 ? 255 : (col < 0 ? 0 : col);
                     sprite.setFillColor(Color(col, col, col));
                     if(eAngle > startAngle && eAngle < endAngle)
                     {
-
                         sprite.setSize(endSize);
                         sprite.setPosition(endPos);
                         sprite.setTexture(&texture);
@@ -236,7 +235,7 @@ long double dt;
 long double x;
 const double rad = 0.0174533;
 const double deg = 57.2958;
-const int fov = 90;
+const int fov = 45;
 int raycount;
 float sens = 0.005;
 typedef Vector2f vec2;
@@ -252,6 +251,7 @@ vec2 vel = vec2(0, 0);
 string toString(int n);
 Keyboard::Key heldKey;
 Texture enemyTexture;
+Texture floorTexture;
 Texture slotTexture;
 vector<vector<int>> mapArray = {
 {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
@@ -284,10 +284,10 @@ void postProcessing(vector<int> arr, int treshold);
 float clamp(float val, float minval, float maxval);
 void start()
 {
-
+    floorTexture.loadFromFile("res/floor.png");
     slotTexture.loadFromFile("res/slot_machine.png");
     enemyTexture.loadFromFile("res/enemy.png");
-    raycount = fov;
+    raycount = 1;
     int randY;
     int randX;
     do
@@ -397,15 +397,15 @@ int main()
         {
         case(Keyboard::Z):
             vel.x += sin(dir *sens + fov / 2 * rad) * speed * dt;
-            vel.y += cos(dir * sens + fov/2*rad) * speed* dt;
+            vel.y += cos(dir * sens + fov / 2 *rad) * speed* dt;
             break;
         case(Keyboard::Q):
             vel.x += sin(dir * sens+ (180 - toAngle) * rad) * speed * dt;
             vel.y += cos(dir * sens+ (180 - toAngle) * rad) * speed * dt;
             break;
         case(Keyboard::S):
-            vel.x += sin(dir * sens+ (180+toAngle)*rad) *speed * dt;
-            vel.y += cos(dir * sens+ (180+toAngle)*rad) *speed * dt;
+            vel.x += sin(dir * sens+ (180 + fov / 2)*rad) *speed * dt;
+            vel.y += cos(dir * sens+ (180 + fov / 2)*rad) *speed * dt;
             break;
         case(Keyboard::D):
             vel.x += sin(dir*sens - toAngle*rad)* speed * dt;
@@ -546,16 +546,31 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
     wall.setPosition(window.getSize().x, 0);
     wall.setTexture(&wallTexture);
     vector<pair<float, int>> distancesSorted;
+    float rectSizeRatio = window.getSize().y / distances.size();
+    RectangleShape floorRect;
+    floorRect.setPosition(0, window.getSize().y - rectSizeRatio);
     for(int i = 0; i < distances.size(); i++)
+    {
+        floorRect.setSize(vec2(window.getSize().x, rectSizeRatio));
+        float percent = i * rectSizeRatio / window.getSize().y;
+        float col = 255 - 255 * percent * 2;
+        floorRect.setTexture(&floorTexture);
+        floorTexture.setRepeated(true);
+        floorRect.setTextureRect({0, percent * floorTexture.getSize().y, floorTexture.getSize().x, floorTexture.getSize().y});
+        floorRect.setFillColor(Color(col, col, col));
+        window.draw(floorRect);
+        floorRect.move(0, -rectSizeRatio);
         distancesSorted.push_back(make_pair(distances[i], i));
+    }
     sort(distancesSorted.begin(), distancesSorted.end());
     reverse(distancesSorted.begin(), distancesSorted.end());
+
     for(auto& d : distancesSorted)
     {
         int index = d.second;
         wall.setPosition(window.getSize().x - index * window.getSize().x / distances.size(), 0);
         float dist = distances[index];
-        wall.setSize(vec2(window.getSize().x / distances.size(), clamp(window.getSize().y / (dist / 50), 0, window.getSize().y)));
+        wall.setSize(vec2(window.getSize().x / distances.size() + 1, clamp(window.getSize().y / (dist / 50), 0, window.getSize().y)));
         wall.setPosition(wall.getPosition().x, (window.getSize().y - wall.getSize().y) / 2);
         float shadowPower= 0.5;
         float col = 255 / (dist / 100);
@@ -587,6 +602,10 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
         wall.setFillColor(color);
         obj.drawObjects(window, dist, position - offset, dir * sens, fov, 400);
         window.draw(wall);
+        RectangleShape ceil(vec2(wall.getSize().x, wall.getPosition().y));
+        ceil.setPosition(wall.getPosition().x, 0);
+        ceil.setFillColor(Color::Black);
+        window.draw(ceil);
         wall.setFillColor(Color(0,0,0));
     }
     window.draw(playerRect);
