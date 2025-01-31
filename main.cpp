@@ -124,6 +124,10 @@ class objManager
             newObj.setYPos(yPos);
             objects.push_back(newObj);
         }
+        void setY(int index, float y)
+        {
+            objects[index].setYPos(y);
+        }
         void drawObjects(RenderWindow& window, float dist, vec2 playerPos, float playerDir, int fov, int maxSize)
         {
             for(int i = 0; i < objects.size(); i++)
@@ -315,6 +319,7 @@ void start()
 string rectCollision(RectangleShape r1, RectangleShape r2);
 int main()
 {
+    float time = clock();
     start();
     while(window.isOpen())
     {
@@ -387,7 +392,7 @@ int main()
                 }
             }
         }
-
+        obj.setY(0, window.getSize().y / 2 + sin(clock() * rad * 0.1) * 50);
         if (fps() !=0)
             dt=(long double)1/fps();
         window.clear(Color::Black);
@@ -546,27 +551,15 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
     wall.setPosition(window.getSize().x, 0);
     wall.setTexture(&wallTexture);
     vector<pair<float, int>> distancesSorted;
-    float rectSizeRatio = window.getSize().y / distances.size();
-    RectangleShape floorRect;
-    floorRect.setPosition(0, window.getSize().y - rectSizeRatio);
     for(int i = 0; i < distances.size(); i++)
     {
-        floorRect.setSize(vec2(window.getSize().x, rectSizeRatio));
-        float percent = i * rectSizeRatio / window.getSize().y;
-        float col = 255 - 255 * percent * 2;
-        floorRect.setTexture(&floorTexture);
-        floorTexture.setRepeated(true);
-        floorRect.setTextureRect({0, percent * floorTexture.getSize().y, floorTexture.getSize().x, floorTexture.getSize().y});
-        floorRect.setFillColor(Color(col, col, col));
-        window.draw(floorRect);
-        floorRect.move(0, -rectSizeRatio);
         distancesSorted.push_back(make_pair(distances[i], i));
     }
     sort(distancesSorted.begin(), distancesSorted.end());
     reverse(distancesSorted.begin(), distancesSorted.end());
-
     for(auto& d : distancesSorted)
     {
+        //---------------wall drawing------------------------
         int index = d.second;
         wall.setPosition(window.getSize().x - index * window.getSize().x / distances.size(), 0);
         float dist = distances[index];
@@ -602,6 +595,7 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
         wall.setFillColor(color);
         obj.drawObjects(window, dist, position - offset, dir * sens, fov, 400);
         window.draw(wall);
+        //-------------------ceil drawing---------------------
         RectangleShape ceil(vec2(wall.getSize().x, wall.getPosition().y));
         ceil.setPosition(wall.getPosition().x, 0);
         ceil.setFillColor(Color::Black);
