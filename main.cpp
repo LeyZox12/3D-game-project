@@ -1,6 +1,7 @@
 #include <iostream>
 #include <algorithm>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <time.h>
 #include <vector>
 #include "../../class/Ray.h"
@@ -75,10 +76,9 @@ class Enemy
         }
         void setTarget(vector<vector<int>> mat, vec2 target)
         {
-            if(!mat[target.y][target.x] == 1)
+            if(mat[target.y][target.x] != 1)
             {
                 mat[target.y][target.x] = 3;
-
                 currentCase = vec2(floor((pos.x) / mat.size()), floor((pos.y) / mat.size()));
                 actionIndex = 0;
                 actions =  path.getClosest(mat, currentCase, target);
@@ -98,10 +98,10 @@ class Enemy
                 {
                     time = clock();
                     currentCase += actions[actionIndex];
+                    pos += vec2(actions[actionIndex].x * mapSize,
+                                actions[actionIndex].y * mapSize);
                     actionIndex++;
-
                 }
-                pos += vec2((currentCase.x * mapSize + mapSize / 2 - pos.x ) / 20, (currentCase.y * mapSize + mapSize / 2 - pos.y) / 20 );
             }
         }
         void display(RenderWindow& window, vec2 offset)
@@ -123,6 +123,10 @@ class objManager
             newObj.setPosition(pos);
             newObj.setYPos(yPos);
             objects.push_back(newObj);
+        }
+        void setPos(int index, float x, float z)
+        {
+            objects[index].setPosition(vec2(x, z));
         }
         void setY(int index, float y)
         {
@@ -164,7 +168,7 @@ class objManager
                 }
                 void setTexture(Texture texture)
                 {
-                    texture = texture;
+                    this -> texture = texture;
                 }
                 Texture getTexture()
                 {
@@ -203,11 +207,11 @@ class objManager
                     }
                     float percent = (eAngle - startAngle) / (endAngle - startAngle);
                     dist *= 2;
-                    float rSize = dist * 2 < 0 ? 0 : (dist * 2 > maxSize ? maxSize : dist * 2);
-                    vec2 endSize = vec2(maxSize - rSize, maxSize - rSize);
+                    //float rSize = dist * 2 < 0 ? 0 : (dist * 2 > maxSize ? maxSize : dist * 2);
+                    vec2 endSize = vec2(maxSize / (dist / 50), maxSize / (dist / 50));
                     vec2 endPos = vec2(percent * window.getSize().x, yPos);
                     //centers the sprite
-                    sprite.move(vec2(rSize / 2, rSize / 2));
+                    sprite.move(vec2(dist / 2, dist / 2));
                     float col = 255 / (dist / 100);
                     col =  col > 255 ? 255 : (col < 0 ? 0 : col);
                     sprite.setFillColor(Color(col, col, col));
@@ -229,26 +233,30 @@ class objManager
         vector<object> objects;
 };
 
-RenderWindow window(VideoMode(900,900), "Raycaster");
+RenderWindow window(VideoMode::getDesktopMode(), "Raycaster", Style::Fullscreen);
 Event e;
 Font font;
 Text fpsText;
+bool isDDA = true;
+bool showMinimap = true;
+bool isDebug = false;
 int fps();
+int fov = 90;
+int mapSize = 20;
+int raycount;
+float sens = 0.005;
+float oldAngle;
+float playerAngle;
 void start();
 long double dt;
 long double x;
 const double rad = 0.0174533;
 const double deg = 57.2958;
-const int fov = 45;
-int raycount;
-float sens = 0.005;
-typedef Vector2f vec2;
-int mapSize = 20;
 double dir = 0;
-float playerAngle;
-int oldAngle;
-bool isDDA = true;
-bool showMinimap = true;
+
+typedef Vector2f vec2;
+
+Sound sound;
 RectangleShape playerRect(vec2(10, 10));
 vec2 position;
 vec2 vel = vec2(0, 0);
@@ -257,40 +265,62 @@ Keyboard::Key heldKey;
 Texture enemyTexture;
 Texture floorTexture;
 Texture slotTexture;
+SoundBuffer scream;
 vector<vector<int>> mapArray = {
 {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
 {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
 {1,0,0,1,0,0,0,0,1,1,0,0,0,0,0,1},
-{1,0,0,1,0,0,0,0,0,1,1,0,0,0,0,1},
+{1,0,0,1,0,0,0,0,0,1,1,1,1,1,1,1},
 {1,0,0,1,1,1,0,0,0,0,1,0,0,0,0,1},
-{1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1},
-{1,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1},
-{1,0,0,1,1,0,0,0,0,0,0,0,0,1,1,1},
-{1,0,0,0,1,1,0,0,0,0,0,0,0,0,1,1},
-{1,0,0,0,0,0,0,0,1,0,1,1,0,1,1,1},
-{1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1},
-{1,0,0,0,1,0,0,0,0,1,0,1,1,1,0,1},
-{1,0,0,0,1,0,0,0,1,0,0,1,1,0,0,1},
-{1,0,1,1,1,0,0,0,1,0,0,1,0,0,1,1},
+{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1},
+{1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1},
+{1,0,0,1,1,0,0,0,0,0,1,0,0,0,0,1},
+{1,0,0,0,1,1,0,0,0,0,1,0,0,0,0,1},
+{1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,1},
+{1,0,0,0,0,0,0,0,0,0,1,1,0,0,0,1},
+{1,0,0,0,1,0,0,0,1,1,0,1,1,1,0,1},
+{1,0,0,0,1,0,0,0,1,0,0,1,0,0,0,1},
+{1,0,1,1,1,0,0,0,1,0,0,0,0,0,0,1},
 {1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1},
 {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
 };
 
+vector<vector<int>> textureMap = {
+{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+{1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+{1,0,0,1,0,0,0,0,1,1,0,0,0,0,0,1},
+{1,0,0,1,0,0,0,0,0,1,2,2,2,2,2,2},
+{1,0,0,1,1,1,0,0,0,0,2,0,0,0,0,2},
+{1,0,0,0,0,1,0,0,0,0,2,0,0,0,0,2},
+{1,0,0,0,0,0,0,0,0,0,2,0,0,0,0,2},
+{1,0,0,1,1,0,0,0,0,0,2,0,0,0,0,2},
+{1,0,0,0,1,1,0,0,0,0,2,0,0,0,0,2},
+{1,0,0,0,0,0,0,0,1,0,2,0,0,0,0,2},
+{1,0,0,0,0,0,0,0,0,0,2,2,0,0,0,2},
+{1,0,0,0,1,0,0,0,1,1,0,2,2,2,0,2},
+{1,0,0,0,1,0,0,0,1,0,0,2,0,0,0,2},
+{1,0,1,1,1,0,0,0,1,0,0,0,0,0,0,2},
+{1,0,0,0,1,0,0,0,0,0,0,2,0,0,0,2},
+{1,1,1,1,1,1,1,1,1,1,1,2,2,3,2,2}
+};
 vec2 offset = vec2(900 - mapArray.size() * mapSize, 0);
-Enemy e1(vec2(40, 60));
+Enemy e1(vec2(mapSize, mapSize));
 objManager obj;
 int speed=4000;
 float precision = 1;
 float dirAngle;
 void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize);
-void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, RenderWindow& window);
+void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, vector<int> textureIndexes, RenderWindow& window);
 void postProcessing(vector<int> arr, int treshold);
 float clamp(float val, float minval, float maxval);
 void start()
 {
     floorTexture.loadFromFile("res/floor.png");
     slotTexture.loadFromFile("res/slot_machine.png");
-    enemyTexture.loadFromFile("res/enemy.png");
+    enemyTexture.loadFromFile("res/freaky.png");
+    scream.loadFromFile("res/scream.wav");
+    sound.setBuffer(scream);
+    sound.play();
     raycount = 1;
     int randY;
     int randX;
@@ -303,6 +333,7 @@ void start()
     e1.mapSize = 20;
     e1.offset = offset;
     obj.addObject(e1.pos, enemyTexture, window.getSize().y / 2);
+    obj.addObject(vec2(227, 187), slotTexture, window.getSize().y/2);
 
     //e1.setTarget(mapArray, position);
 
@@ -328,7 +359,6 @@ int main()
         {
             if(e.type == Event::Closed)
                 window.close();
-
             raycount+= e.mouseWheelScroll.delta;
             if(e.type == Event::KeyPressed)
             {
@@ -362,12 +392,8 @@ int main()
                     case(Keyboard::Down):
                         heldKey = Keyboard::Down;
                         break;
-                    case(Keyboard::Add):
-                        precision+=0.1;
-                        break;
-                    case(Keyboard::Subtract):
-                        if(precision>0.1)
-                            precision-=0.1;
+                    case(Keyboard::F3):
+                        isDebug = !isDebug;
                         break;
                 }
             }
@@ -392,6 +418,11 @@ int main()
                 }
             }
         }
+        vec2 diff = position - offset - e1.pos;
+        float dist = sqrt(diff.x * diff.x + diff.y * diff.y);
+        sound.setVolume(20 / (dist / 5));
+        sound.setLoop(true);
+
         obj.setY(0, window.getSize().y / 2 + sin(clock() * rad * 0.1) * 50);
         if (fps() !=0)
             dt=(long double)1/fps();
@@ -416,16 +447,7 @@ int main()
             vel.x += sin(dir*sens - toAngle*rad)* speed * dt;
             vel.y += cos(dir*sens - toAngle*rad)* speed * dt;
             break;
-
         }
-        /*
-        static int time = clock();
-        if(!e1.isTargetSet)
-        {
-            e1.setTarget(mapArray, position);
-            time = clock();
-        }
-        */
         window.draw(fpsText);
         static VertexArray line(LinesStrip, 2);
         vector<Ray> rays;
@@ -434,6 +456,7 @@ int main()
         vector<float> directions;
         vector<int> sides;
         vector<float> percents;
+        vector<int> textureIndexes;
         for(float i =0; i<raycount; i+=(float)fov/raycount)
         {
             line[0].position = position;
@@ -457,6 +480,7 @@ int main()
                 lines.push_back(line);
                 line[1].position = vec2(position + dirVec * correctedDist);
                 distances.push_back(correctedDist * 50);
+                textureIndexes.push_back(textureMap[ray.getPosition().y][ray.getPosition().x]);
             }
             else
             {
@@ -476,10 +500,10 @@ int main()
         if(fixedPos != oldPos)
         {
             oldPos = fixedPos;
-            //e1.setTarget(mapArray, fixedPos);
-            cout << e1.actions.size() << endl << endl;
+            e1.setTarget(mapArray, fixedPos);
         }
-        //e1.update(dt);
+        obj.setPos(0, e1.pos.x, e1.pos.y);
+        e1.update(dt);
         playerRect.setPosition(position);
         playerRect.setOrigin(5, 5);
         for(int i = 0; i < mapArray.size(); i++)
@@ -506,7 +530,7 @@ int main()
         }
         position += vec2(vel.x * dt, vel.y * dt);
         vel = vec2(vel.x * 0.9, vel.y * 0.9);
-        drawMap(distances, sides, percents, window);
+        drawMap(distances, sides, percents, textureIndexes, window);
         if(showMinimap)
         {
             drawMiniMap(mapArray, offset, 20);
@@ -514,7 +538,16 @@ int main()
                 window.draw(l);
             e1.display(window, offset);
         }
-
+        if(isDebug)
+        {
+            Text debugText;
+            debugText.setFont(font);
+            debugText.setString("pos\nx:" + toString(position.x - offset.x) +
+                                "\ny:" + toString(position.y - offset.y) +
+                                "\nrayCount:" + toString(raycount) +
+                                "\nfov:" + toString(fov));
+            window.draw(debugText);
+        }
         //drawObject(window, slotTexture, vec2(3 * mapSize, mapSize) + offset, position, dir * sens, fov, window.getSize().y - 200, 800);
         window.display();
     }
@@ -540,16 +573,17 @@ int fps()
     return lastFps;
 }
 
-void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, RenderWindow& window)
+void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, vector<int> textureIndex, RenderWindow& window)
 {
     double ratioAngle = distances.size() / fov;
     Texture wallTexture;
-    wallTexture.loadFromFile("res/texture.png");
+    wallTexture.loadFromFile("res/spriteSheet.png");
     Vector2u textureSize = wallTexture.getSize();
     wallTexture.setRepeated(true);
     RectangleShape wall;
     wall.setPosition(window.getSize().x, 0);
     wall.setTexture(&wallTexture);
+
     vector<pair<float, int>> distancesSorted;
     for(int i = 0; i < distances.size(); i++)
     {
@@ -560,10 +594,11 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
     for(auto& d : distancesSorted)
     {
         //---------------wall drawing------------------------
+
         int index = d.second;
         wall.setPosition(window.getSize().x - index * window.getSize().x / distances.size(), 0);
         float dist = distances[index];
-        wall.setSize(vec2(window.getSize().x / distances.size() + 1, clamp(window.getSize().y / (dist / 50), 0, window.getSize().y)));
+        wall.setSize(vec2(window.getSize().x / distances.size() + 1, window.getSize().y / (dist / 50)));
         wall.setPosition(wall.getPosition().x, (window.getSize().y - wall.getSize().y) / 2);
         float shadowPower= 0.5;
         float col = 255 / (dist / 100);
@@ -587,7 +622,7 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
             break;*/
         }
         if(isDDA)
-            wall.setTextureRect({fmod(percents[index] * textureSize.x, textureSize.x), 0, wall.getSize().x / textureSize.x, textureSize.y});
+            wall.setTextureRect({percents[index] * 32 + (textureIndex[index] - 1) * 32, 0, wall.getSize().x / 32, 32});
         Color color = wall.getFillColor();
         color.r = clamp(color.r, 0, 255);
         color.g = clamp(color.g, 0, 255);
@@ -602,7 +637,6 @@ void drawMap(vector<float> distances, vector<int> sides, vector<float> percents,
         window.draw(ceil);
         wall.setFillColor(Color(0,0,0));
     }
-    window.draw(playerRect);
 }
 void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize)
 {
@@ -619,7 +653,7 @@ void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize)
             }
         }
     }
-
+    window.draw(playerRect);
 }
 
 string toString(int n)
