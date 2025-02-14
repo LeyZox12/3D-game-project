@@ -76,10 +76,10 @@ class Enemy
         }
         void setTarget(vector<vector<int>> mat, vec2 target)
         {
-            if(mat[target.y][target.x] != 1)
+            if(!isTargetSet && mat[target.y][target.x] != 1)
             {
                 mat[target.y][target.x] = 3;
-                currentCase = vec2(floor((pos.x) / mat.size()), floor((pos.y) / mat.size()));
+                currentCase = vec2(floor((pos.x) / mapSize), floor((pos.y) / mapSize));
                 actionIndex = 0;
                 actions =  path.getClosest(mat, currentCase, target);
                 isTargetSet = true;
@@ -116,12 +116,36 @@ class Enemy
 class objManager
 {
     public:
-        void addObject(vec2 pos, Texture texture, int yPos)
+        int interact()
+        {
+
+            for(int i = 0; i < objects.size(); i++)
+            {
+
+                if(objects[i].getInteractible())
+                {
+                    string name = objects[i].getName();
+                    cout << name << endl;
+                    if(name == "slotMachine")
+                    {
+                        return 0;
+                    }
+                    else if(name == "blackJack")
+                    {
+                        return 1;
+                    }
+                    return -1;
+                }
+            }
+            return -1;
+        }
+        void addObject(vec2 pos, Texture texture, int yPos, string name)
         {
             object newObj;
             newObj.setTexture(texture);
             newObj.setPosition(pos);
             newObj.setYPos(yPos);
+            newObj.setName(name);
             objects.push_back(newObj);
         }
         void setPos(int index, float x, float z)
@@ -138,14 +162,21 @@ class objManager
             {
                 vec2 diff = vec2(objects[i].getPosition() - playerPos);
                 float playerToObjDist = sqrt(diff.x * diff.x + diff.y * diff.y) * 2;
+
                 if(dist > playerToObjDist && !objects[i].getHasBeenDrawn())
                 {
+
                     objects[i].draw(window, playerPos, playerDir, fov, 400);
                 }
             }
             for(int i = 0; i < objects.size(); i++)
                 objects[i].setBeenDrawn(false);
         }
+        void addInteractibleCount(int i_offset)
+        {
+            this -> interactibleCount += i_offset;
+        }
+
     private:
         class object
         {
@@ -153,6 +184,10 @@ class objManager
                 object()
                 {
 
+                }
+                void setName(string name)
+                {
+                    this -> name = name;
                 }
                 void setYPos(float yPos)
                 {
@@ -170,6 +205,10 @@ class objManager
                 {
                     this -> texture = texture;
                 }
+                void setInteractible(bool interactible)
+                {
+                    this -> interactible = interactible;
+                }
                 Texture getTexture()
                 {
                     return texture;
@@ -185,6 +224,14 @@ class objManager
                 vec2 getPosition()
                 {
                     return pos;
+                }
+                string getName()
+                {
+                    return this -> name;
+                }
+                bool getInteractible()
+                {
+                    return this -> interactible;
                 }
                 void draw(RenderWindow& window, vec2 playerPos, float playerDir, int fov, int maxSize)
                 {
@@ -217,20 +264,35 @@ class objManager
                     sprite.setFillColor(Color(col, col, col));
                     if(eAngle > startAngle && eAngle < endAngle)
                     {
+                        if(dist < 40 && !getInteractible())
+                        {
+                            setInteractible(true);
+                            cout << getName() << ": true\n";
+                        }
+                        else if(dist > 40 && getInteractible())
+                        {
+                            cout << getName() << ": false\n";
+                            setInteractible(false);
+                        }
                         sprite.setSize(endSize);
                         sprite.setPosition(endPos);
                         sprite.setTexture(&texture);
                         window.draw(sprite);
                         setBeenDrawn(true);
                     }
+                    else
+                        setInteractible(false);
                 }
             private:
+                bool interactible = false;
                 Texture texture;
                 bool hasBeenDrawn;
                 vec2 pos;
                 float yPos;
+                string name;
         };
         vector<object> objects;
+        int interactibleCount = 0;
 };
 
 RenderWindow window(VideoMode::getDesktopMode(), "Raycaster", Style::Fullscreen);
@@ -240,11 +302,15 @@ Text fpsText;
 bool isDDA = true;
 bool showMinimap = true;
 bool isDebug = false;
+int gamePlayed = -1;
+bool playingCasino = false;
+int gameTimeStart;
+bool tryInteract = false;
 int fps();
 int fov = 90;
 int mapSize = 20;
 int raycount;
-float sens = 0.005;
+float sens = 0.0025;
 float oldAngle;
 float playerAngle;
 void start();
@@ -257,14 +323,15 @@ double dir = 0;
 typedef Vector2f vec2;
 
 Sound sound;
-RectangleShape playerRect(vec2(10, 10));
+CircleShape player(5);
 vec2 position;
 vec2 vel = vec2(0, 0);
 string toString(int n);
-Keyboard::Key heldKey;
+vector<Keyboard::Key> heldKeys;
 Texture enemyTexture;
 Texture floorTexture;
 Texture slotTexture;
+Texture slotSheet;
 SoundBuffer scream;
 vector<vector<int>> mapArray = {
 {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
@@ -303,22 +370,58 @@ vector<vector<int>> textureMap = {
 {1,0,0,0,1,0,0,0,0,0,0,2,0,0,0,2},
 {1,1,1,1,1,1,1,1,1,1,1,2,2,3,2,2}
 };
+class player
+{
+    public:
+        player(vec2 pos)
+        {
+            this -> position = pos;
+            this -> money = 100.f;
+        }
+        float getMoney()
+        {
+            return this -> money;
+        }
+        vec2 getPosition()
+        {
+            return position;
+        }
+        void setPosition(vec2 pos)
+        {
+            this -> position = pos;
+        }
+        void setMoney(float m)
+        {
+            this -> money = m;
+        }
+    private:
+        vec2 position;
+        vec2 vel;
+        vector<int> items;
+        float money;
+        int index;
+};
 vec2 offset = vec2(900 - mapArray.size() * mapSize, 0);
 Enemy e1(vec2(mapSize, mapSize));
 objManager obj;
-int speed=4000;
+int speed=500;
 float precision = 1;
 float dirAngle;
 void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize);
 void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, vector<int> textureIndexes, RenderWindow& window);
 void postProcessing(vector<int> arr, int treshold);
+void updateGame(RenderWindow& window, int& gamePlaying);
 float clamp(float val, float minval, float maxval);
+int ballRectCollision(CircleShape ball, RectangleShape rect);
 void start()
 {
+    window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(60);
     floorTexture.loadFromFile("res/floor.png");
     slotTexture.loadFromFile("res/slot_machine.png");
     enemyTexture.loadFromFile("res/freaky.png");
     scream.loadFromFile("res/scream.wav");
+    slotSheet.loadFromFile("res/slotSprites.png");
     sound.setBuffer(scream);
     sound.play();
     raycount = 1;
@@ -332,11 +435,10 @@ void start()
     }while(mapArray[randY][randX] != 0);
     e1.mapSize = 20;
     e1.offset = offset;
-    obj.addObject(e1.pos, enemyTexture, window.getSize().y / 2);
-    obj.addObject(vec2(227, 187), slotTexture, window.getSize().y/2);
+    obj.addObject(e1.pos, enemyTexture, window.getSize().y / 2, "enemy");
+    obj.addObject(vec2(227, 187), slotTexture, window.getSize().y/2, "slotMachine");
 
     //e1.setTarget(mapArray, position);
-
 
     window.setMouseCursorGrabbed(true);
     window.setMouseCursorVisible(false);
@@ -365,16 +467,24 @@ int main()
                 switch(e.key.code)
                 {
                     case(Keyboard::Z):
-                        heldKey = Keyboard::Z;
+                        heldKeys.push_back(Keyboard::Z);
                         break;
                     case(Keyboard::Q):
-                        heldKey = Keyboard::Q;
+                        heldKeys.push_back(Keyboard::Q);
                         break;
                     case(Keyboard::S):
-                        heldKey = Keyboard::S;
+                        heldKeys.push_back(Keyboard::S);
                         break;
                     case(Keyboard::D):
-                        heldKey = Keyboard::D;
+                        heldKeys.push_back(Keyboard::D);
+                        break;
+                    case(Keyboard::E):
+                        if(obj.interact() > -1 && !playingCasino)
+                        {
+                            gamePlayed = obj.interact();
+                            playingCasino = true;
+                            gameTimeStart = clock();
+                        }
                         break;
                     case(Keyboard::Escape):
                         window.setMouseCursorGrabbed(false);
@@ -386,19 +496,17 @@ int main()
                     case(Keyboard::Tab):
                         showMinimap = !showMinimap;
                         break;
-                    case(Keyboard::Up):
-                        heldKey = Keyboard::Up;
-                        break;
-                    case(Keyboard::Down):
-                        heldKey = Keyboard::Down;
-                        break;
                     case(Keyboard::F3):
                         isDebug = !isDebug;
                         break;
                 }
             }
-            if(e.type == Event::KeyReleased && e.key.code == heldKey)
-                heldKey = Keyboard::Unknown;
+            if(e.type == Event::KeyReleased)
+                if(e.key.code == Keyboard::Z ||
+                   e.key.code == Keyboard::Q ||
+                   e.key.code == Keyboard::S ||
+                   e.key.code == Keyboard::D)
+                    heldKeys.erase(find(heldKeys.begin(), heldKeys.end(), e.key.code));
             if(e.type == Event::MouseMoved)
             {
                 int delta =oldAngle-e.mouseMove.x;
@@ -418,36 +526,39 @@ int main()
                 }
             }
         }
+        if(raycount < 0)
+            raycount = fov;
         vec2 diff = position - offset - e1.pos;
         float dist = sqrt(diff.x * diff.x + diff.y * diff.y);
         sound.setVolume(20 / (dist / 5));
         sound.setLoop(true);
 
-        obj.setY(0, window.getSize().y / 2 + sin(clock() * rad * 0.1) * 50);
+        obj.setY(0, window.getSize().y / 2);
         if (fps() !=0)
-            dt=(long double)1/fps();
+            dt=(float)1/60;
         window.clear(Color::Black);
         int toAngle = (180-fov )/2;
 
-        switch(heldKey)
-        {
-        case(Keyboard::Z):
-            vel.x += sin(dir *sens + fov / 2 * rad) * speed * dt;
-            vel.y += cos(dir * sens + fov / 2 *rad) * speed* dt;
-            break;
-        case(Keyboard::Q):
-            vel.x += sin(dir * sens+ (180 - toAngle) * rad) * speed * dt;
-            vel.y += cos(dir * sens+ (180 - toAngle) * rad) * speed * dt;
-            break;
-        case(Keyboard::S):
-            vel.x += sin(dir * sens+ (180 + fov / 2)*rad) *speed * dt;
-            vel.y += cos(dir * sens+ (180 + fov / 2)*rad) *speed * dt;
-            break;
-        case(Keyboard::D):
-            vel.x += sin(dir*sens - toAngle*rad)* speed * dt;
-            vel.y += cos(dir*sens - toAngle*rad)* speed * dt;
-            break;
-        }
+        for(int i = 0; i < heldKeys.size(); i++)
+            switch(heldKeys[i])
+            {
+            case(Keyboard::Z):
+                vel.x += (sin(dir *sens + fov / 2 * rad) * speed * dt) / heldKeys.size();
+                vel.y += (cos(dir * sens + fov / 2 *rad) * speed* dt) / heldKeys.size();
+                break;
+            case(Keyboard::Q):
+                vel.x += (sin(dir * sens+ (180 - toAngle) * rad) * speed * dt) / heldKeys.size();
+                vel.y += (cos(dir * sens+ (180 - toAngle) * rad) * speed * dt) / heldKeys.size();
+                break;
+            case(Keyboard::S):
+                vel.x += (sin(dir * sens+ (180 + fov / 2)*rad) *speed * dt) / heldKeys.size();
+                vel.y += (cos(dir * sens+ (180 + fov / 2)*rad) *speed * dt) / heldKeys.size();
+                break;
+            case(Keyboard::D):
+                vel.x += (sin(dir*sens - toAngle*rad)* speed * dt) / heldKeys.size();
+                vel.y += (cos(dir*sens - toAngle*rad)* speed * dt) / heldKeys.size();
+                break;
+            }
         window.draw(fpsText);
         static VertexArray line(LinesStrip, 2);
         vector<Ray> rays;
@@ -500,12 +611,12 @@ int main()
         if(fixedPos != oldPos)
         {
             oldPos = fixedPos;
-            e1.setTarget(mapArray, fixedPos);
+            //e1.setTarget(mapArray, fixedPos);
         }
         obj.setPos(0, e1.pos.x, e1.pos.y);
         e1.update(dt);
-        playerRect.setPosition(position);
-        playerRect.setOrigin(5, 5);
+        player.setPosition(position);
+        player.setOrigin(player.getRadius(), player.getRadius());
         for(int i = 0; i < mapArray.size(); i++)
         {
             for(int j = 0; j < mapArray[i].size(); j++)
@@ -514,17 +625,26 @@ int main()
                 {
                     RectangleShape r2(vec2(mapSize, mapSize));
                     r2.setPosition(j * mapSize + offset.x, i * mapSize + offset.y);
-                    string result = rectCollision(playerRect, r2);
-                    float halfSize = playerRect.getSize().x / 2;
-                    if(result != "none")
-                        if(result == "up")
-                            vel.y = clamp(vel.y, -9999, 0);
-                        else if(result == "down")
-                            vel.y = clamp(vel.y, 0, 9999);
-                        else if(result == "left")
-                            vel.x = clamp(vel.x, -9999, 0);
-                        else if(result == "right")
-                            vel.x = clamp(vel.x, 0, 9999);
+                    int result = ballRectCollision(player, r2);
+                    switch(result)
+                    {
+                    case(0):
+                        position = vec2(position.x, i * mapSize - player.getRadius() + offset.y);
+                        vel.y = 0;
+                        break;
+                    case(1):
+                        position = vec2(position.x, i * mapSize + mapSize + player.getRadius() + offset.y);
+                        vel.y = 0;
+                        break;
+                    case(2):
+                        position = vec2(j * mapSize - player.getRadius() + offset.x, position.y);
+                        vel.x = 0;
+                        break;
+                    case(3):
+                        vel.x = 0;
+                        position = vec2(j * mapSize + mapSize + player.getRadius() + offset.x, position.y);
+                        break;
+                    }
                 }
             }
         }
@@ -538,6 +658,8 @@ int main()
                 window.draw(l);
             e1.display(window, offset);
         }
+        if(gamePlayed > -1)
+            updateGame(window, gamePlayed);
         if(isDebug)
         {
             Text debugText;
@@ -545,10 +667,12 @@ int main()
             debugText.setString("pos\nx:" + toString(position.x - offset.x) +
                                 "\ny:" + toString(position.y - offset.y) +
                                 "\nrayCount:" + toString(raycount) +
-                                "\nfov:" + toString(fov));
+                                "\nfov:" + toString(fov) +
+                                "\ncasinoGameIndex:" + toString(gamePlayed));
             window.draw(debugText);
         }
         //drawObject(window, slotTexture, vec2(3 * mapSize, mapSize) + offset, position, dir * sens, fov, window.getSize().y - 200, 800);
+
         window.display();
     }
     return 0;
@@ -572,7 +696,78 @@ int fps()
     }
     return lastFps;
 }
+void updateGame(RenderWindow& window, int& gamePlaying)
+{
+    switch(gamePlaying)
+    {
+    case(0):
+        {
+            RectangleShape rect;
+            rect.setTexture(&slotSheet);
+            rect.setTextureRect({50, 0, 111, 67});
+            vector<RectangleShape> slots;
+            static vector<int> indexes;
+            static vector<int> randomOffsets = {rand(), rand(), rand()};
+            static int current = 0;
+            slots.push_back(RectangleShape());
+            slots.push_back(RectangleShape());
+            slots.push_back(RectangleShape());
+            rect.setSize(vec2(window.getSize().x / 2, window.getSize().y / 2));
+            float slotRatioX =rect.getSize().x / 111;
+            float slotRatioY =rect.getSize().y / 67;
 
+
+            rect.setPosition(window.getSize().x / 4,
+                             window.getSize().y / 4);
+            window.draw(rect);
+            if(clock() - gameTimeStart > 3000 + 1000 * current)
+            {
+                int index = floor(fmod((randomOffsets[current] + (clock() - gameTimeStart) * 0.5), 150) / 50);
+                cout << index << endl;
+                indexes.push_back(index);
+                current++;
+            }
+            if(clock() - gameTimeStart > 8000)
+            {
+                bool hasWon = true;
+                for(int i = 0; i < 3; i++)
+                    if(indexes[i] != indexes[0])
+                    {
+                        hasWon = false;
+                        break;
+                    }
+                string result = hasWon ? "you won!!\n" : "lost\n";
+                cout << "result:" << result;
+                randomOffsets = {rand() % 150, rand() % 150, rand() % 150};
+                gamePlaying = -1;
+                current = 0;
+                playingCasino = false;
+                indexes.clear();
+            }
+            else
+            {
+                slotSheet.setRepeated(true);
+                for(int i = 0; i < 3; i++)
+                {
+                    slots[i].setSize(vec2(slotRatioX * 25, slotRatioY * 50));
+                    slots[i].setPosition(vec2(rect.getPosition().x + slotRatioX * i * 37 + slotRatioX * 6, rect.getPosition().y + slotRatioY * 9));
+                    slots[i].setTexture(&slotSheet);
+                    slots[i].setTextureRect({25, 0, 25, 50});
+                    window.draw(slots[i]);
+                    int y = fmod((randomOffsets[i] + (clock() - gameTimeStart) * 0.5), 150);
+                    slots[i].setTextureRect({0, current > i ? indexes[i] * 50 : y, 25, 50});
+                    window.draw(slots[i]);
+                    slots[i].setTextureRect({25, 50, 25, 50});
+                    window.draw(slots[i]);
+                }
+            }
+            break;
+        }
+    case(1):
+        break;
+    }
+
+}
 void drawMap(vector<float> distances, vector<int> sides, vector<float> percents, vector<int> textureIndex, RenderWindow& window)
 {
     double ratioAngle = distances.size() / fov;
@@ -653,7 +848,7 @@ void drawMiniMap(vector<vector<int>> mapA, vec2 offset, int mapSize)
             }
         }
     }
-    window.draw(playerRect);
+    window.draw(player);
 }
 
 string toString(int n)
@@ -731,4 +926,43 @@ float clamp(float val, float minval, float maxval)
     if(val > maxval)
         return maxval;
     return val;
+}
+int ballRectCollision(CircleShape ball, RectangleShape rect)
+{
+    //choose correct side;
+    vec2 rectPos = rect.getPosition();
+    vec2 rectSize = rect.getSize();
+    vec2 ballPos = ball.getPosition();
+    float x = ball.getPosition().x;
+    float y = ball.getPosition().y;
+    if(x<rect.getPosition().x)
+    {
+        x = rect.getPosition().x;
+
+    }
+    else if(x>rect.getPosition().x + rect.getSize().x)
+        x = rect.getPosition().x + rect.getSize().x;
+    if(y<rect.getPosition().y)
+    {
+        y = rect.getPosition().y;
+    }
+    else if(y>rect.getPosition().y+rect.getSize().y)
+        y = rect.getPosition().y + rect.getSize().y;
+    Vector2f diff = Vector2f(ball.getPosition().x - x, ball.getPosition().y -y);
+    float dist = sqrt(diff.x*diff.x+ diff.y*diff.y);
+    if(dist<ball.getRadius())
+    {
+        int radius = ball.getRadius();
+        vector<float> distances = {
+                                abs(rectPos.y - (ballPos.y + radius)),
+                                abs(rectPos.y + rectSize.y - (ballPos.y - radius)),
+                                abs(rectPos.x - (ballPos.x + radius)),
+                                abs(rectPos.x + rectSize.x - (ballPos.x - radius))
+                                };
+        auto it = min_element(distances.begin(), distances.end());
+        int index = distance(distances.begin(), it);
+        return index;
+    }
+    return -1;
+
 }
